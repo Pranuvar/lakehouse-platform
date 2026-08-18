@@ -68,7 +68,7 @@ jobs:
       # macros/delta_source.sql.
       - name: dbt build (models + tests, against seed fixtures)
         working-directory: dbt
-        run: dbt build --vars '{use_seeds: true}'
+        run: "dbt build --vars '{use_seeds: true}'"
         env:
           DBT_PROFILES_DIR: ${{ github.workspace }}/dbt
           DBT_TARGET: local
