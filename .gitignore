@@ -13,6 +13,7 @@ venv/
 data/
 *.parquet
 *.csv
+!dbt/seeds/*.csv
 !seeders/fixtures/**/*.csv
 warehouse/*.duckdb
 warehouse/*.duckdb.wal
