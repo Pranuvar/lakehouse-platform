@@ -181,7 +181,7 @@ curl -H "X-API-Key: dev-local-key-do-not-use-in-prod" \
 MinIO console: http://localhost:9001 (credentials in `.env`). Airflow
 UI: http://localhost:8080 (admin/admin).
 
-## What this demonstrates (for a hiring manager)
+## What this demonstrates 
 
 A single project that shows, with working code and a documented incident
 trail rather than a slide:
