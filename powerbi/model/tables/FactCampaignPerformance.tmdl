@@ -1,0 +1,75 @@
+table FactCampaignPerformance
+	description: "dbt: fct_campaign_performance (the one dbt-incremental model in this project -- see its docstring). Marketing spend/performance, daily grain per campaign/ad set."
+
+	column CampaignId
+		dataType: int64
+		sourceColumn: campaign_id
+		summarizeBy: none
+
+	column CampaignName
+		dataType: string
+		sourceColumn: campaign_name
+		summarizeBy: none
+
+	column AdSetId
+		dataType: int64
+		sourceColumn: ad_set_id
+		summarizeBy: none
+
+	column Channel
+		dataType: string
+		sourceColumn: channel
+		summarizeBy: none
+
+	column PerformanceDate
+		dataType: dateTime
+		formatString: yyyy-mm-dd
+		sourceColumn: performance_date
+		summarizeBy: none
+
+	column Impressions
+		dataType: int64
+		sourceColumn: impressions
+		summarizeBy: sum
+
+	column Clicks
+		dataType: int64
+		sourceColumn: clicks
+		summarizeBy: sum
+
+	column Conversions
+		dataType: int64
+		sourceColumn: conversions
+		summarizeBy: sum
+
+	column SpendEur
+		dataType: decimal
+		formatString: "€#,0.00"
+		sourceColumn: spend_eur
+		summarizeBy: sum
+
+	column Ctr
+		dataType: decimal
+		formatString: "0.00%"
+		sourceColumn: ctr
+		summarizeBy: none
+
+	column Cvr
+		dataType: decimal
+		formatString: "0.00%"
+		sourceColumn: cvr
+		summarizeBy: none
+
+	column CostPerConversionEur
+		dataType: decimal
+		formatString: "€#,0.00"
+		sourceColumn: cost_per_conversion_eur
+		summarizeBy: none
+
+	partition FactCampaignPerformance = m
+		mode: import
+		source =
+				let
+					Source = Parquet.Document(File.Contents(ParquetFolder & "fct_campaign_performance.parquet"))
+				in
+					Source

@@ -1,0 +1,37 @@
+[sqlfluff]
+dialect = duckdb
+templater = dbt
+sql_file_exts = .sql
+max_line_length = 120
+# ST06 (wildcards/simple columns before calculated ones) and RF04
+# (keywords as identifiers) are house-style calls this project
+# deliberately doesn't take: dim_date.sql's `year`/`month`/`day_of_month`
+# are the clearest possible column names for a date dimension despite
+# being reserved words elsewhere, and column ORDER in a select list here
+# generally follows "narrative" grouping (ids, then descriptive fields,
+# then metrics) rather than a strict simple-before-calculated rule.
+# LT02 (indentation) is excluded specifically for its friction with
+# Jinja `{% if %}` blocks inside a select list (see
+# models/staging/stg_customers.sql) -- the RENDERED SQL is correctly
+# indented either way; sqlfluff's indent tracking just doesn't fully
+# agree with a conditional column across two branches.
+exclude_rules = ST06, RF04, LT02
+
+[sqlfluff:templater:dbt]
+project_dir = dbt
+profiles_dir = dbt
+
+[sqlfluff:rules]
+allow_scalar = True
+
+# Uppercase keywords read as shouty in a project this size and every
+# model here is already lowercase-consistent -- enforce the convention
+# actually in use, not sqlfluff's default.
+[sqlfluff:rules:capitalisation.keywords]
+capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.functions]
+capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.literals]
+capitalisation_policy = lower

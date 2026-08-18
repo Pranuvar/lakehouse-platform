@@ -1,0 +1,59 @@
+table DimDate
+	description: "Generated date dimension (dbt: dim_date), 2024-01-01 to 2027-01-01."
+
+	column DateDay
+		dataType: dateTime
+		formatString: yyyy-mm-dd
+		sourceColumn: date_day
+		isKey
+
+	column Year
+		dataType: int64
+		sourceColumn: year
+		summarizeBy: none
+
+	column Month
+		dataType: int64
+		sourceColumn: month
+		summarizeBy: none
+
+	column DayOfMonth
+		dataType: int64
+		sourceColumn: day_of_month
+		summarizeBy: none
+
+	column YearMonth
+		dataType: string
+		sourceColumn: year_month
+		summarizeBy: none
+
+	column MonthName
+		dataType: string
+		sourceColumn: month_name
+		summarizeBy: none
+
+	column DayName
+		dataType: string
+		sourceColumn: day_name
+		summarizeBy: none
+
+	column IsWeekend
+		dataType: boolean
+		sourceColumn: is_weekend
+		summarizeBy: none
+
+	-- Year > Month > Day drill-down -- the textbook date hierarchy every
+	-- retail dashboard needs for "drill from year revenue down to a
+	-- single day" without the user building it themselves.
+	hierarchy 'Calendar Hierarchy'
+		level Year
+		level MonthName
+		level DateDay
+
+	partition DimDate = m
+		mode: import
+		source =
+				let
+					Source = Parquet.Document(File.Contents(ParquetFolder & "dim_date.parquet"))
+				in
+					Source

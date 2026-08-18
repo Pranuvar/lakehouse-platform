@@ -1,0 +1,22 @@
+table DimUserCountryAccess
+	description: "RLS mapping table -- who (by email) can see which country's data. Synthetic for this demo (see powerbi/export_gold_for_powerbi.py); in a real deployment this syncs from the IdP/HR system, not hand-maintained. Hidden from report view -- it's plumbing for roles.tmdl, not something an end user browses."
+	isHidden
+
+	column UserEmail
+		dataType: string
+		sourceColumn: user_email
+		summarizeBy: none
+
+	column CountryAccess
+		dataType: string
+		sourceColumn: country_access
+		summarizeBy: none
+		description: "A country code (IE/GB/DE/...), or '*' meaning all countries -- see the 'Regional Manager' role's DAX filter for how '*' is handled."
+
+	partition DimUserCountryAccess = m
+		mode: import
+		source =
+				let
+					Source = Parquet.Document(File.Contents(ParquetFolder & "dim_user_country_access.parquet"))
+				in
+					Source

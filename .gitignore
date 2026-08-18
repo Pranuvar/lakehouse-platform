@@ -1,0 +1,46 @@
+# secrets / local env
+.env
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# data (generated locally, not committed -- seeders regenerate it)
+data/
+*.parquet
+*.csv
+!seeders/fixtures/**/*.csv
+warehouse/*.duckdb
+warehouse/*.duckdb.wal
+
+# dbt
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+dbt/.user.yml
+
+# airflow
+airflow/logs/
+airflow/plugins/__pycache__/
+docker/airflow/logs/
+
+# spark
+spark_jobs/**/spark-warehouse/
+**/metastore_db/
+**/derby.log
+
+# minio
+docker/minio/data/
+
+# power bi (binary files aren't diffable -- we version the DAX/TMDL source instead)
+*.pbix
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp

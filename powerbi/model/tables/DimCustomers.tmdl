@@ -1,0 +1,65 @@
+table DimCustomers
+	description: "dbt: dim_customers -- one row per identity-resolved real person (see spark_jobs/bronze_to_silver/customers.py)."
+
+	column CustomerId
+		dataType: int64
+		sourceColumn: customer_id
+		isKey
+		summarizeBy: none
+
+	column FirstName
+		dataType: string
+		sourceColumn: first_name
+		summarizeBy: none
+
+	column LastName
+		dataType: string
+		sourceColumn: last_name
+		summarizeBy: none
+
+	column FullName
+		dataType: string
+		sourceColumn: FullName
+		summarizeBy: none
+		isCalculated
+		expression: DimCustomers[FirstName] & " " & DimCustomers[LastName]
+
+	column Email
+		dataType: string
+		sourceColumn: email
+		summarizeBy: none
+
+	column Country
+		dataType: string
+		sourceColumn: country
+		summarizeBy: none
+
+	column City
+		dataType: string
+		sourceColumn: city
+		summarizeBy: none
+
+	column SignupDate
+		dataType: dateTime
+		formatString: yyyy-mm-dd
+		sourceColumn: signup_date
+		summarizeBy: none
+
+	column IsMarketingOptIn
+		dataType: boolean
+		sourceColumn: is_marketing_opt_in
+		summarizeBy: none
+
+	column IsResolvedDuplicateIdentity
+		dataType: boolean
+		sourceColumn: is_resolved_duplicate_identity
+		summarizeBy: none
+		description: "True for the ~3,000 customers whose row is the canonical survivor of an identity-resolution merge -- see the source model's docstring."
+
+	partition DimCustomers = m
+		mode: import
+		source =
+				let
+					Source = Parquet.Document(File.Contents(ParquetFolder & "dim_customers.parquet"))
+				in
+					Source

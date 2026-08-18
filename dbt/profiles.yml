@@ -1,0 +1,45 @@
+# DBT_TARGET (.env) selects which output runs by default: `local`
+# (DuckDB, free, zero-cloud) or `snowflake` (needs a real account -- see
+# README's "what needs paid cloud" table). Every model file is identical
+# either way; only this file and macros/delta_source.sql know the
+# difference exists.
+lakehouse:
+  target: "{{ env_var('DBT_TARGET', 'local') }}"
+  outputs:
+
+    local:
+      type: duckdb
+      path: "{{ env_var('DBT_DUCKDB_PATH', '/opt/airflow/data/warehouse/lakehouse.duckdb') }}"
+      extensions:
+        - httpfs
+        - delta
+      secrets:
+        - type: s3
+          key_id: "{{ env_var('MINIO_ROOT_USER', 'lakehouse') }}"
+          secret: "{{ env_var('MINIO_ROOT_PASSWORD', 'lakehouse_dev_pw') }}"
+          endpoint: "{{ env_var('MINIO_ENDPOINT', 'minio:9000') }}"
+          url_style: path
+          use_ssl: false
+      threads: 4
+
+    # Config-only -- proves the migration is a target swap, not a
+    # rewrite. Every mart model is adapter-agnostic dbt/Jinja already;
+    # what a real cutover additionally needs (not faked here, since it
+    # needs a live Snowflake account to actually stand up):
+    #   1. External tables/stages over the same S3 bucket this project
+    #      already writes to (`lakehouse_external` source, referenced by
+    #      macros/delta_source.sql's snowflake branch) -- Snowflake has
+    #      no zero-copy Delta reader the way DuckDB's `delta` extension
+    #      does, so staging's source definition is the one place that's
+    #      genuinely engine-specific.
+    #   2. `SNOWFLAKE_*` vars populated in .env.
+    snowflake:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT', '') }}"
+      user: "{{ env_var('SNOWFLAKE_USER', '') }}"
+      password: "{{ env_var('SNOWFLAKE_PASSWORD', '') }}"
+      role: "{{ env_var('SNOWFLAKE_ROLE', '') }}"
+      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE', '') }}"
+      database: "{{ env_var('SNOWFLAKE_DATABASE', '') }}"
+      schema: "{{ env_var('SNOWFLAKE_SCHEMA', '') }}"
+      threads: 4

@@ -1,0 +1,7 @@
+/// Single shared M parameter every table's partition reads from --
+/// change the data source (e.g. after re-running
+/// export_gold_for_powerbi.py, or pointing at a colleague's checkout)
+/// in exactly one place instead of nine.
+expression ParquetFolder = "C:\path\to\lakehouse-platform\powerbi\data_export\" meta [IsParameterQuery=true, Type="Text", IsParameterQueryRequired=true]
+	lineageTag: parquet-folder-parameter
+	description: "Absolute path to powerbi/data_export/ (run export_gold_for_powerbi.py first -- see powerbi/README.md). Must end in a path separator. Update after cloning/moving the repo."

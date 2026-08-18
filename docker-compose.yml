@@ -1,0 +1,265 @@
+name: lakehouse-platform
+
+# ---------------------------------------------------------------------------
+# Service groups (docker compose "profiles"):
+#   default (no --profile flag)  -> the four heterogeneous SOURCES only.
+#                                    postgres, minio, redpanda, mock-api.
+#                                    This is what you need to run the seeders
+#                                    and generate the 9M+ row dataset.
+#   --profile orchestration      -> adds Airflow (webserver + scheduler).
+#                                    Pulls in a custom image with Java +
+#                                    PySpark + delta-spark + dbt-duckdb, so
+#                                    the first build is slower -- bring this
+#                                    up once sources are seeded.
+#
+# Why split like this: the whole stack together comfortably exceeds what a
+# free-tier / laptop-class box (this was built against ~6-7GB RAM) can run
+# at once without swapping. Standing sources up first, seeding, then adding
+# orchestration keeps `docker compose up` fast and matches how you'd
+# actually work through the build day by day.
+# ---------------------------------------------------------------------------
+
+x-airflow-common: &airflow-common
+  build:
+    context: ./docker/airflow
+  environment: &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_AIRFLOW_DB}
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"
+    AIRFLOW__CORE__DEFAULT_TIMEZONE: Europe/Dublin
+    # app config the DAGs / spark jobs read at runtime
+    POSTGRES_HOST: postgres
+    POSTGRES_PORT: "5432"
+    POSTGRES_USER: ${POSTGRES_USER}
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    POSTGRES_OLTP_DB: ${POSTGRES_OLTP_DB}
+    MINIO_ENDPOINT: ${MINIO_ENDPOINT}
+    MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+    MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    MINIO_BUCKET_DROPZONE: ${MINIO_BUCKET_DROPZONE}
+    MINIO_BUCKET_LAKEHOUSE: ${MINIO_BUCKET_LAKEHOUSE}
+    REDPANDA_BROKER: ${REDPANDA_BROKER}
+    REDPANDA_TOPIC_EVENTS: ${REDPANDA_TOPIC_EVENTS}
+    MOCK_API_BASE_URL: http://mock-api:8000
+    MOCK_API_KEY: ${MOCK_API_KEY:-dev-local-key-do-not-use-in-prod}
+    DBT_TARGET: ${DBT_TARGET}
+    DBT_PROFILES_DIR: /opt/airflow/dbt
+    DBT_DUCKDB_PATH: /opt/airflow/data/warehouse/lakehouse.duckdb
+    # so `ingestion.*` / `spark_jobs.*` import as top-level packages
+    # regardless of how a script/task invokes them (PythonOperator,
+    # direct `python /opt/airflow/...` execution, etc.), AND so any
+    # script nested under spark_jobs/ (at any depth) can do
+    # `from common.spark_session import ...` uniformly rather than
+    # needing a different import path depending on how deep it lives.
+    PYTHONPATH: /opt/airflow:/opt/airflow/spark_jobs
+  volumes:
+    - ./airflow/dags:/opt/airflow/dags
+    - ./airflow/logs:/opt/airflow/logs
+    - ./airflow/plugins:/opt/airflow/plugins
+    - ./spark_jobs:/opt/airflow/spark_jobs
+    - ./ingestion:/opt/airflow/ingestion
+    - ./dbt:/opt/airflow/dbt
+    - ./governance:/opt/airflow/governance
+    - ./data:/opt/airflow/data
+    - ./ops:/opt/airflow/ops
+    - ./powerbi:/opt/airflow/powerbi
+    - ./docs:/opt/airflow/docs
+  user: "${AIRFLOW_UID:-50000}:0"
+  depends_on:
+    postgres:
+      condition: service_healthy
+  profiles: ["orchestration"]
+
+services:
+  # -------------------------------------------------------------------
+  # SOURCE 1: Postgres OLTP -- core transactional data (customers,
+  # products, stores, orders, order_items, payments). Also hosts the
+  # Airflow metadata DB in a second database on the same instance, to
+  # keep the container count (and RAM) down -- two logical DBs, one
+  # engine, created by docker/postgres/init/01_create_dbs.sql.
+  # -------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_OLTP_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_OLTP_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    mem_limit: 512m
+
+  # -------------------------------------------------------------------
+  # SOURCE 3: MinIO -- S3-compatible object storage. Two roles:
+  #   raw-dropzone : messy CSV/Parquet flat-file drops (schema drift)
+  #   lakehouse    : bronze/silver/gold Delta tables (s3a://lakehouse/...)
+  # -------------------------------------------------------------------
+  minio:
+    image: minio/minio:RELEASE.2024-10-13T13-34-11Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    mem_limit: 512m
+
+  minio-init:
+    image: minio/mc:RELEASE.2024-10-08T09-37-26Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD} &&
+      mc mb -p local/${MINIO_BUCKET_DROPZONE} &&
+      mc mb -p local/${MINIO_BUCKET_LAKEHOUSE} &&
+      mc anonymous set download local/${MINIO_BUCKET_DROPZONE} &&
+      echo 'MinIO buckets ready: ${MINIO_BUCKET_DROPZONE}, ${MINIO_BUCKET_LAKEHOUSE}'
+      "
+    restart: "no"
+
+  # -------------------------------------------------------------------
+  # SOURCE 4: Redpanda -- Kafka-API-compatible broker for the
+  # append-only clickstream event source. Chosen over vanilla
+  # Kafka+Zookeeper purely for local RAM footprint (single binary,
+  # no ZK); every producer/consumer here speaks the real Kafka wire
+  # protocol, so the same code points at MSK/Confluent/Kafka with a
+  # bootstrap-server change. `dev-container` mode is Redpanda's own
+  # low-resource preset for exactly this use case.
+  # -------------------------------------------------------------------
+  redpanda:
+    image: redpandadata/redpanda:v24.2.7
+    command:
+      - redpanda
+      - start
+      - --mode
+      - dev-container
+      - --smp
+      - "1"
+      - --memory
+      - "512M"
+      - --overprovisioned
+      - --node-id
+      - "0"
+      # Two listeners, because "advertised address" has to be reachable
+      # by whoever asks for it, and the two audiences here (containers on
+      # the compose network vs. host-side Python like the seeders) don't
+      # share a hostname. `internal` is what Airflow/Spark inside the
+      # network use (REDPANDA_BROKER=redpanda:9092 in .env); `external`
+      # is what host tools use (localhost:19092). Same broker, same
+      # topic, same Kafka protocol either way.
+      - --kafka-addr
+      - internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr
+      - internal://redpanda:9092,external://localhost:19092
+    ports:
+      - "9092:9092"
+      - "19092:19092"
+      - "9644:9644"
+    volumes:
+      - redpanda_data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+    mem_limit: 768m
+
+  # -------------------------------------------------------------------
+  # SOURCE 2: Mock REST API -- a small FastAPI service standing in for
+  # a third-party ad-platform API (campaign performance metrics). It
+  # deliberately implements pagination, an incremental `updated_since`
+  # cursor, and rate limiting (429s) so the ingestion layer has to
+  # implement real retry/backoff/incremental-fetch logic against it --
+  # see ingestion/pipelines/rest_api_campaigns.py.
+  # -------------------------------------------------------------------
+  mock-api:
+    build:
+      context: ./docker/mock-api
+    environment:
+      RATE_LIMIT_PER_MIN: ${MOCK_API_RATE_LIMIT_PER_MIN:-60}
+      MOCK_API_KEY: ${MOCK_API_KEY:-dev-local-key-do-not-use-in-prod}
+    ports:
+      - "${MOCK_API_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    mem_limit: 768m # ~1.1M-row synthetic dataset held in numpy arrays in memory
+
+  # -------------------------------------------------------------------
+  # ORCHESTRATION -- Airflow. profile: orchestration (see header note).
+  # One image (docker/airflow/Dockerfile) bundles Java 17 + PySpark +
+  # delta-spark + dbt-duckdb, so SparkSubmitOperator / BashOperator
+  # tasks run spark-submit and dbt in-process against local[*] --
+  # no separate Spark cluster container needed at this scale.
+  # -------------------------------------------------------------------
+  airflow-init:
+    <<: *airflow-common
+    # Deliberately NOT overriding entrypoint here: the base image's own
+    # /entrypoint script is what patches /etc/passwd for an arbitrary
+    # host AIRFLOW_UID before exec'ing this command -- overriding it
+    # skips that and Airflow fails with "user has no username".
+    command:
+      - bash
+      - -c
+      - |
+        airflow db migrate
+        airflow users create \
+          --username admin --password admin \
+          --firstname Lakehouse --lastname Admin \
+          --role Admin --email admin@example.com || true
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_MIGRATE: "true"
+
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    ports:
+      - "${AIRFLOW_WEBSERVER_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    mem_limit: 1280m # gunicorn + FAB webserver idles around ~870MB; 1024m was too tight
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    mem_limit: 3072m # headroom for local[*] Spark jobs run as subprocesses
+
+volumes:
+  pg_data:
+  minio_data:
+  redpanda_data:

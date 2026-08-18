@@ -1,0 +1,86 @@
+table FactClickstreamSessions
+	description: "dbt: fct_clickstream_sessions -- session-grain funnel rollup. Converting sessions join to FactOrders/FactOrderItems via OrderId (a real relationship -- see seeders/seed_kafka_events.py: converting sessions were built FROM live orders, not fabricated)."
+
+	column SessionId
+		dataType: string
+		sourceColumn: session_id
+		isKey
+		summarizeBy: none
+
+	column CustomerId
+		dataType: int64
+		sourceColumn: customer_id
+		summarizeBy: none
+
+	column DeviceType
+		dataType: string
+		sourceColumn: device_type
+		summarizeBy: none
+
+	column Referrer
+		dataType: string
+		sourceColumn: referrer
+		summarizeBy: none
+
+	column SessionStartTs
+		dataType: dateTime
+		sourceColumn: session_start_ts
+		summarizeBy: none
+
+	column SessionEndTs
+		dataType: dateTime
+		sourceColumn: session_end_ts
+		summarizeBy: none
+
+	column SessionDurationSeconds
+		dataType: int64
+		sourceColumn: session_duration_seconds
+		summarizeBy: average
+
+	column EventCount
+		dataType: int64
+		sourceColumn: event_count
+		summarizeBy: sum
+
+	column PageViewCount
+		dataType: int64
+		sourceColumn: page_view_count
+		summarizeBy: sum
+
+	column ProductViewCount
+		dataType: int64
+		sourceColumn: product_view_count
+		summarizeBy: sum
+
+	column AddToCartCount
+		dataType: int64
+		sourceColumn: add_to_cart_count
+		summarizeBy: sum
+
+	column CheckoutStartCount
+		dataType: int64
+		sourceColumn: checkout_start_count
+		summarizeBy: sum
+
+	column PurchaseCount
+		dataType: int64
+		sourceColumn: purchase_count
+		summarizeBy: sum
+
+	column Converted
+		dataType: boolean
+		sourceColumn: converted
+		summarizeBy: none
+
+	column OrderId
+		dataType: int64
+		sourceColumn: order_id
+		summarizeBy: none
+
+	partition FactClickstreamSessions = m
+		mode: import
+		source =
+				let
+					Source = Parquet.Document(File.Contents(ParquetFolder & "fct_clickstream_sessions.parquet"))
+				in
+					Source

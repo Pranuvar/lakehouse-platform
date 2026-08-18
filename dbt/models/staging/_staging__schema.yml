@@ -1,0 +1,124 @@
+version: 2
+
+models:
+  - name: stg_customers
+    description: "One row per resolved real-world person (see spark_jobs/bronze_to_silver/customers.py for the identity-resolution logic)."
+    columns:
+      - name: customer_id
+        description: "Canonical customer identity -- the earliest customer_id among any duplicate identities merged into this person."
+        tests: [not_null, unique]
+      - name: email
+        description: "Normalised (lower/trim) email, unique per resolved person."
+        tests: [not_null, unique]
+      - name: merged_identity_count
+        description: "How many original OLTP customer_ids collapsed into this one row. 1 = no duplication found."
+      - name: source_customer_ids
+        description: "Every original customer_id that resolved to this canonical identity (array). Feeds stg_customer_identity_map."
+
+  - name: stg_customer_identity_map
+    description: "original_customer_id -> canonical_customer_id lookup, unnested from stg_customers.source_customer_ids. Used to remap fact-table customer_id references generated against the pre-resolution id space -- see this model's own inline docstring for why it exists."
+
+  - name: stg_stores
+    description: "150 stores (1 online + 149 physical) -- passthrough of silver.stores."
+    columns:
+      - name: store_id
+        description: "Store identity, stable for the store's lifetime (no SCD2 -- store attributes don't change in this dataset)."
+        tests: [not_null, unique]
+      - name: channel
+        description: "'online' (1 store) or 'physical' (149 stores)."
+
+  - name: stg_products
+    description: "SCD2 -- multiple rows per product_id over time, one per tracked price/cost/status version. Uniqueness is on (product_id, valid_from), not product_id alone."
+    columns:
+      - name: product_id
+        description: "Natural product key -- NOT unique in this table by design (SCD2). Use dim_products.product_key downstream for a unique row identifier."
+        tests: [not_null]
+      - name: unit_cost_eur
+        description: "Cost basis for THIS version only -- valid for valid_from <= date < valid_to."
+      - name: valid_from
+        description: "Inclusive start of this version's validity. Backdated to the product's real created_at on its first version, not the date the SCD2 pipeline first ran -- see products_scd2.py's docstring for why that distinction matters."
+      - name: valid_to
+        description: "Exclusive end of this version's validity. NULL means still current."
+      - name: is_current
+        description: "True for exactly one row per product_id -- the currently-active version."
+        tests: [not_null]
+
+  - name: stg_orders
+    description: "customer_id remapped through stg_customer_identity_map (see that model) so every order resolves to a customer_id that actually has a row in stg_customers."
+    columns:
+      - name: order_id
+        tests: [not_null, unique]
+      - name: customer_id
+        description: "Canonical customer_id (post identity-resolution remap)."
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_customers')
+              field: customer_id
+      - name: store_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_stores')
+              field: store_id
+      - name: order_ts
+        description: "Business event time -- when the order actually happened."
+      - name: created_at
+        description: "System insert time -- when this row first appeared in the OLTP database. Diverges from order_ts for ~1% of in-store orders (late-arriving facts, batch-synced tills) -- see docs/incident-log.md #2."
+      - name: order_status
+        tests:
+          - accepted_values:
+              values: ["completed", "shipped", "cancelled", "refunded"]
+
+  - name: stg_order_items
+    description: "Line-item grain -- one row per product per order."
+    columns:
+      - name: order_item_id
+        tests: [not_null, unique]
+      - name: order_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_orders')
+              field: order_id
+      - name: product_id
+        description: "Natural product key (not the SCD2 product_key) -- resolved to the correct historical version downstream in fct_order_items via a point-in-time join."
+        tests: [not_null]
+      - name: line_total_eur
+        description: "quantity * unit_price_eur * (1 - discount_pct / 100), rounded to 2dp."
+
+  - name: stg_payments
+    description: "One or more rows per order (a small fraction of orders split across 2 payments -- see seeders/seed_postgres_oltp.py). sum(amount_eur) per order_id reconciles exactly to sum(line_total_eur) in stg_order_items by construction of the seed data -- enforced by tests/assert_payments_reconcile_to_order_items.sql and spark_jobs/quality_gate.py."
+    columns:
+      - name: payment_id
+        tests: [not_null, unique]
+      - name: order_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_orders')
+              field: order_id
+
+  - name: stg_campaign_performance
+    description: "Daily ad-platform performance per campaign/ad-set, cast from the mock API's raw JSON types (updated_at in particular -- see this model's inline comment)."
+    columns:
+      - name: campaign_id
+        tests: [not_null]
+      - name: updated_at
+        description: "Restatement cursor -- the mock API re-surfaces a rotating slice of historical rows with a fresh updated_at to simulate attribution corrections. See docker/mock-api/app.py."
+
+  - name: stg_pos_inventory
+    description: "Cleaned POS inventory snapshots -- the payoff of the flat-file schema-drift story (see docs/incident-log.md #1): unit_cost_eur/quantity_on_hand coerced back to real numerics regardless of which of the 4 source schema-drift stages a given row came from."
+    columns:
+      - name: store_id
+        tests: [not_null]
+      - name: quantity_on_hand
+        description: "NULL is a genuine, expected value here (~2% of rows -- simulated till-export truncation), not a parse failure. See spark_jobs/quality_gate.py's pos_inventory check for how the two are distinguished."
+
+  - name: stg_clickstream_events
+    description: "Deduplicated web/app clickstream (event_id is the dedup key -- defends against at-least-once redelivery from the Kafka consumer, see ingestion/pipelines/kafka_events.py)."
+    columns:
+      - name: event_id
+        tests: [not_null, unique]
+      - name: order_id
+        description: "Populated only on 'purchase' events for converting sessions -- a REAL join to a live order (see seeders/seed_kafka_events.py), not a fabricated relationship."

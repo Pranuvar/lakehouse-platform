@@ -1,0 +1,101 @@
+table FactOrderItems
+	description: "dbt: fct_order_items -- line grain, the main sales fact. Relates to DimProducts on ProductKey (the SCD2 surrogate), so margin uses the cost that was actually current on OrderDate -- see the source model's docstring for the point-in-time join logic and the documented earliest-version fallback."
+
+	column OrderItemId
+		dataType: int64
+		sourceColumn: order_item_id
+		isKey
+		summarizeBy: none
+
+	column OrderId
+		dataType: int64
+		sourceColumn: order_id
+		summarizeBy: none
+
+	column CustomerId
+		dataType: int64
+		sourceColumn: customer_id
+		summarizeBy: none
+
+	column StoreId
+		dataType: int64
+		sourceColumn: store_id
+		summarizeBy: none
+
+	column ProductKey
+		dataType: string
+		sourceColumn: product_key
+		summarizeBy: none
+
+	column ProductId
+		dataType: int64
+		sourceColumn: product_id
+		summarizeBy: none
+		isHidden
+
+	column OrderDate
+		dataType: dateTime
+		formatString: yyyy-mm-dd
+		sourceColumn: order_date
+		summarizeBy: none
+
+	column OrderMonth
+		dataType: string
+		sourceColumn: order_month
+		summarizeBy: none
+		isHidden
+
+	column Quantity
+		dataType: int64
+		sourceColumn: quantity
+		summarizeBy: sum
+
+	column UnitPriceEur
+		dataType: decimal
+		formatString: "€#,0.00"
+		sourceColumn: unit_price_eur
+		summarizeBy: none
+
+	column DiscountPct
+		dataType: decimal
+		formatString: "0.00%"
+		sourceColumn: discount_pct
+		summarizeBy: none
+
+	column LineTotalEur
+		dataType: decimal
+		formatString: "€#,0.00"
+		sourceColumn: line_total_eur
+		summarizeBy: sum
+
+	column UnitCostEurAtSale
+		dataType: decimal
+		formatString: "€#,0.00"
+		sourceColumn: unit_cost_eur_at_sale
+		summarizeBy: none
+
+	column CostTotalEur
+		dataType: decimal
+		formatString: "€#,0.00"
+		sourceColumn: cost_total_eur
+		summarizeBy: sum
+
+	column GrossMarginEur
+		dataType: decimal
+		formatString: "€#,0.00"
+		sourceColumn: gross_margin_eur
+		summarizeBy: sum
+
+	column UsedEarliestVersionFallback
+		dataType: boolean
+		sourceColumn: used_earliest_version_fallback
+		summarizeBy: none
+		description: "True when this line's cost came from a product's earliest tracked SCD2 version rather than the version genuinely current on OrderDate -- a data-generation gap, transparently flagged, not blended in silently. See docs/BUILD_LOG.md."
+
+	partition FactOrderItems = m
+		mode: import
+		source =
+				let
+					Source = Parquet.Document(File.Contents(ParquetFolder & "fct_order_items.parquet"))
+				in
+					Source

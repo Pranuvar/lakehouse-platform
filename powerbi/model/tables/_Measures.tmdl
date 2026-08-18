@@ -1,0 +1,89 @@
+/// A dedicated, data-less "measures home" table -- the standard Power BI
+/// pattern for keeping all DAX in one browsable place instead of
+/// scattered across whichever fact table a measure happens to reference
+/// first. Nothing here has a partition/source; it exists purely to hold
+/// calculated measures.
+table _Measures
+	lineageTag: measures-table
+
+	measure 'Total Revenue' = SUM(FactOrderItems[LineTotalEur])
+		formatString: "€#,0.00"
+		description: "Gross line-item revenue, before considering refunds at the order-status level."
+
+	measure 'Total Cost' = SUM(FactOrderItems[CostTotalEur])
+		formatString: "€#,0.00"
+		description: "Cost of goods sold, using the product cost that was actually current on each order's date (SCD2 point-in-time join) -- not today's cost applied retroactively."
+
+	measure 'Total Margin' = SUM(FactOrderItems[GrossMarginEur])
+		formatString: "€#,0.00"
+
+	measure 'Margin %' = DIVIDE([Total Margin], [Total Revenue])
+		formatString: "0.0%"
+
+	measure 'Order Count' = DISTINCTCOUNT(FactOrderItems[OrderId])
+		formatString: "#,0"
+
+	measure 'Average Order Value' = DIVIDE([Total Revenue], [Order Count])
+		formatString: "€#,0.00"
+		description: "AOV. Revenue and order count both come from FactOrderItems (not FactOrders) so this stays consistent when sliced by product/category."
+
+	measure 'Total Quantity Sold' = SUM(FactOrderItems[Quantity])
+		formatString: "#,0"
+
+	measure 'Customer Count' = DISTINCTCOUNT(FactOrderItems[CustomerId])
+		formatString: "#,0"
+
+	measure 'Revenue YoY %' =
+			VAR CurrentRevenue = [Total Revenue]
+			VAR PriorYearRevenue =
+					CALCULATE([Total Revenue], SAMEPERIODLASTYEAR(DimDate[DateDay]))
+			RETURN
+					DIVIDE(CurrentRevenue - PriorYearRevenue, PriorYearRevenue)
+		formatString: "0.0%"
+		description: "Requires DimDate on the report's date axis (not FactOrderItems[OrderDate] directly) for SAMEPERIODLASTYEAR to walk the calendar correctly."
+
+	measure 'Data Quality: SCD2 Fallback Rate %' =
+			DIVIDE(
+					CALCULATE(COUNTROWS(FactOrderItems), FactOrderItems[UsedEarliestVersionFallback] = TRUE),
+					COUNTROWS(FactOrderItems)
+			)
+		formatString: "0.0%"
+		description: "Surfaces a real, documented data-lineage caveat (see docs/BUILD_LOG.md) directly in the BI layer instead of leaving it only in a markdown file nobody using the dashboard will read -- the honest version of 'know your data' is putting the caveat where the data gets consumed."
+
+	measure 'Total Ad Spend' = SUM(FactCampaignPerformance[SpendEur])
+		formatString: "€#,0.00"
+
+	measure 'Total Impressions' = SUM(FactCampaignPerformance[Impressions])
+		formatString: "#,0"
+
+	measure 'Total Clicks' = SUM(FactCampaignPerformance[Clicks])
+		formatString: "#,0"
+
+	measure 'Total Ad Conversions' = SUM(FactCampaignPerformance[Conversions])
+		formatString: "#,0"
+
+	measure 'Blended CTR' = DIVIDE([Total Clicks], [Total Impressions])
+		formatString: "0.00%"
+
+	measure 'Blended CVR' = DIVIDE([Total Ad Conversions], [Total Clicks])
+		formatString: "0.00%"
+
+	measure 'Cost per Conversion' = DIVIDE([Total Ad Spend], [Total Ad Conversions])
+		formatString: "€#,0.00"
+
+	measure 'Total Sessions' = DISTINCTCOUNT(FactClickstreamSessions[SessionId])
+		formatString: "#,0"
+
+	measure 'Converted Sessions' =
+			CALCULATE(DISTINCTCOUNT(FactClickstreamSessions[SessionId]), FactClickstreamSessions[Converted] = TRUE)
+		formatString: "#,0"
+
+	measure 'Web Conversion Rate' = DIVIDE([Converted Sessions], [Total Sessions])
+		formatString: "0.00%"
+
+	measure 'Cart Abandonment Rate' =
+			DIVIDE(
+					SUM(FactClickstreamSessions[AddToCartCount]) - SUM(FactClickstreamSessions[PurchaseCount]),
+					SUM(FactClickstreamSessions[AddToCartCount])
+			)
+		formatString: "0.0%"

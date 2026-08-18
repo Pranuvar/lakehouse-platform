@@ -1,0 +1,30 @@
+/// Fjord Mart Analytics -- semantic model root. See powerbi/README.md
+/// for how to materialise this TMDL source into an actual Power BI
+/// Desktop project (as a .pbip, or by pasting into a blank model via
+/// Desktop's TMDL view -- both are supported by current Desktop
+/// versions with the TMDL/Git-integration preview features enabled).
+///
+/// Star schema: DimDate, DimCustomers, DimStores, DimProducts (SCD2),
+/// DimUserCountryAccess (RLS-only) as dimensions; FactOrders,
+/// FactOrderItems, FactCampaignPerformance, FactClickstreamSessions as
+/// facts; _Measures as the DAX home. See relationships.tmdl for how
+/// they connect and roles.tmdl for row-level security.
+model Model
+	culture: en-IE
+	defaultPowerBIDataSourceVersion: powerBI_V3
+	sourceQueryCulture: en-IE
+
+	annotation PBI_QueryOrder = ["ParquetFolder"]
+
+ref table DimDate
+ref table DimCustomers
+ref table DimStores
+ref table DimProducts
+ref table DimUserCountryAccess
+ref table FactOrders
+ref table FactOrderItems
+ref table FactCampaignPerformance
+ref table FactClickstreamSessions
+ref table _Measures
+
+ref expression ParquetFolder

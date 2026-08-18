@@ -1,0 +1,36 @@
+name: lakehouse
+version: "1.0.0"
+config-version: 2
+
+profile: lakehouse
+
+model-paths: ["models"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+seed-paths: ["seeds"]
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  lakehouse:
+    staging:
+      +materialized: view
+      +schema: staging
+    marts:
+      +materialized: table
+      +schema: marts
+
+# CI-only fixtures (see macros/delta_source.sql's `use_seeds` branch and
+# .github/workflows/ci.yml) -- small hand-written CSVs standing in for
+# the real silver Delta tables, so `dbt build` runs against something
+# real without needing live Postgres/MinIO/Spark infrastructure in a
+# GitHub Actions runner.
+seeds:
+  lakehouse:
+    +schema: staging
+
+vars:
+  # Every staging model reads via `{{ delta_source('table') }}` (see
+  # macros/delta_source.sql) instead of a hardcoded path, so the ONE
+  # thing that changes to point this whole project at a real S3 bucket
+  # instead of MinIO is this var -- not 9 separate model files.
+  lakehouse_bucket: "lakehouse"

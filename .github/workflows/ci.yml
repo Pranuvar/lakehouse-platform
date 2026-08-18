@@ -1,0 +1,89 @@
+name: CI
+
+# Runs on every PR touching dbt/ or the SQL it depends on. Deliberately
+# does NOT spin up Postgres/MinIO/Spark to test against real data --
+# that's what the local docker-compose stack + ops/incident_*.py scripts
+# are for (see docs/BUILD_LOG.md for why the full stack was ruled out
+# here: slow and heavy for what a PR check needs). Instead: real dbt
+# build, real dbt tests, real sqlfluff lint -- against small hand-written
+# CSV fixtures (dbt/seeds/) standing in for the real silver Delta
+# tables. Same models, same tests, same SQL; only the data source
+# changes (see macros/delta_source.sql's `use_seeds` branch). Total
+# runtime: seconds, not minutes, and fully deterministic.
+on:
+  pull_request:
+    paths:
+      - "dbt/**"
+      - ".github/workflows/ci.yml"
+      - ".sqlfluff"
+
+jobs:
+  sql-lint:
+    name: sqlfluff lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install sqlfluff + dbt-duckdb
+        run: pip install sqlfluff==4.3.0 sqlfluff-templater-dbt==4.3.0 dbt-duckdb==1.9.1
+
+      - name: dbt deps
+        working-directory: dbt
+        run: dbt deps
+        env:
+          DBT_PROFILES_DIR: ${{ github.workspace }}/dbt
+          DBT_TARGET: local
+          DBT_DUCKDB_PATH: /tmp/sqlfluff_ci.duckdb
+
+      - name: sqlfluff lint
+        run: sqlfluff lint dbt/models/ dbt/tests/
+        env:
+          DBT_PROFILES_DIR: ${{ github.workspace }}/dbt
+          DBT_TARGET: local
+          DBT_DUCKDB_PATH: /tmp/sqlfluff_ci.duckdb
+
+  dbt-build:
+    name: dbt build (seed fixtures)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dbt-duckdb
+        run: pip install dbt-duckdb==1.9.1
+
+      - name: dbt deps
+        working-directory: dbt
+        run: dbt deps
+        env:
+          DBT_PROFILES_DIR: ${{ github.workspace }}/dbt
+          DBT_TARGET: local
+          DBT_DUCKDB_PATH: /tmp/ci_lakehouse.duckdb
+
+      # `--vars '{use_seeds: true}'` is the whole trick: every staging
+      # model reads from dbt/seeds/*.csv instead of delta_scan() against
+      # MinIO, so this needs no live infrastructure at all -- see
+      # macros/delta_source.sql.
+      - name: dbt build (models + tests, against seed fixtures)
+        working-directory: dbt
+        run: dbt build --vars '{use_seeds: true}'
+        env:
+          DBT_PROFILES_DIR: ${{ github.workspace }}/dbt
+          DBT_TARGET: local
+          DBT_DUCKDB_PATH: /tmp/ci_lakehouse.duckdb
+
+      - name: Upload dbt artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dbt-logs
+          path: |
+            dbt/logs/
+            dbt/target/

@@ -1,0 +1,20 @@
+version: 2
+
+# Only consulted when target=snowflake (see macros/delta_source.sql).
+# Declared here so dbt's source() resolves at compile time even though
+# nothing reads it under the default local/DuckDB target -- these would
+# be real external tables/stages over the same S3 bucket in a live
+# Snowflake cutover, not created by this project.
+sources:
+  - name: lakehouse_external
+    schema: "{{ env_var('SNOWFLAKE_SCHEMA', 'PUBLIC') }}"
+    tables:
+      - name: customers
+      - name: stores
+      - name: products
+      - name: orders
+      - name: order_items
+      - name: payments
+      - name: campaign_performance
+      - name: pos_inventory_snapshots
+      - name: clickstream_events

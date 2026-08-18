@@ -1,0 +1,41 @@
+/// Row-level security. Filters a TABLE (DimStores), not each fact table
+/// individually -- DimStores sits on the "one" side of relationships to
+/// both FactOrders and FactOrderItems (see relationships.tmdl), so
+/// filtering it once cascades to both automatically. That's the whole
+/// design principle of RLS in a star schema: filter the dimension, let
+/// the model's own relationships do the propagation, rather than
+/// writing the same filter logic once per fact table.
+///
+/// Dynamic, not static: the filter looks up the CURRENTLY LOGGED-IN
+/// user's access via USERPRINCIPALNAME() against DimUserCountryAccess
+/// (see that table's docstring), rather than hard-coding "Country = IE"
+/// per role. One role definition serves every regional manager; adding
+/// a new one is a new row in the mapping table, not a new Power BI role.
+///
+/// How to actually test this locally, without publishing to Power BI
+/// Service (see powerbi/README.md for the full walkthrough): Power BI
+/// Desktop's Modeling ribbon > "View As" > tick "Regional Manager" >
+/// "Other user" > type one of the emails from
+/// powerbi/export_gold_for_powerbi.py's USER_COUNTRY_ACCESS list (e.g.
+/// regional.manager.ie@fjordmart.example) -- every visual immediately
+/// re-filters to that user's country, live, in Desktop, no Service
+/// tenant or Pro licence needed.
+
+role 'Regional Manager'
+	modelPermission: read
+
+	tablePermission DimStores =
+			VAR UserAccess =
+					LOOKUPVALUE(
+							DimUserCountryAccess[CountryAccess],
+							DimUserCountryAccess[UserEmail], USERPRINCIPALNAME()
+					)
+			RETURN
+					UserAccess = "*" || DimStores[Country] = UserAccess
+
+role 'Ireland Only (static demo)'
+	modelPermission: read
+	description: "A second, deliberately STATIC role for a quick sanity check when testing dynamic RLS above ('does the model even filter correctly for IE, independent of the lookup table') -- View As this role needs no 'Other user' email at all."
+
+	tablePermission DimStores =
+			DimStores[Country] = "IE"

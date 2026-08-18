@@ -1,0 +1,83 @@
+version: 2
+
+models:
+  - name: dim_customers
+    description: "One row per identity-resolved real person. Gold-layer passthrough of stg_customers with a friendlier column set for BI (see powerbi/model/tables/DimCustomers.tmdl)."
+    columns:
+      - name: customer_id
+        description: "Canonical customer identity."
+        tests: [not_null, unique]
+      - name: is_resolved_duplicate_identity
+        description: "True for the ~3,000 customers whose row absorbed at least one duplicate identity during Spark-side identity resolution."
+
+  - name: dim_stores
+    description: "150 stores (1 online + 149 physical)."
+    columns:
+      - name: store_id
+        tests: [not_null, unique]
+
+  - name: dim_products
+    description: "SCD2 -- product_key is the row-level unique key, product_id repeats across versions by design. See spark_jobs/bronze_to_silver/products_scd2.py for the Delta MERGE that builds this history, and powerbi/model/roles.tmdl for how this table's Country-adjacent sibling (dim_stores) drives Power BI RLS."
+    columns:
+      - name: product_key
+        description: "Surrogate key = hash(product_id, _silver_processed_at) -- see this model's inline comment for why _silver_processed_at, not valid_from, was needed for genuine uniqueness."
+        tests: [not_null, unique]
+      - name: product_id
+        description: "Natural product key -- NOT unique in this table (SCD2, multiple versions per product)."
+        tests: [not_null]
+      - name: is_current
+        description: "True for exactly one version per product_id."
+
+  - name: dim_date
+    description: "Generated date dimension, 2024-01-01 to 2027-01-01 (dbt_utils.date_spine) -- doesn't come from any of the 4 sources, deliberately derived rather than sourced."
+    columns:
+      - name: date_day
+        tests: [not_null, unique]
+
+  - name: fct_order_items
+    description: "Line-item grain sales fact -- the main analytical fact table. Joins to dim_products on product_key via a point-in-time match (order_date within [valid_from, valid_to)) so margin uses the cost that was actually current on the sale date. See this model's own docstring for the full reasoning, including the documented earliest-version fallback for orders that predate a product's tracked SCD2 history."
+    columns:
+      - name: order_item_id
+        tests: [not_null, unique]
+      - name: order_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('fct_orders')
+              field: order_id
+      - name: unit_cost_eur_at_sale
+        description: "Cost basis from the SCD2-correct product version as of order_date -- NOT necessarily today's cost."
+      - name: gross_margin_eur
+        description: "line_total_eur - (quantity * unit_cost_eur_at_sale)."
+        tests:
+          - not_null:
+              config:
+                severity: warn  # safety net only -- the earliest-version fallback (see used_earliest_version_fallback) resolves every known case to a non-null value; a warn here would mean a genuinely NEW gap (e.g. an order_item referencing a product_id absent from dim_products entirely), worth surfacing but not worth a hard build failure on its own.
+      - name: used_earliest_version_fallback
+        description: "True when this line's cost came from a product's earliest tracked SCD2 version rather than the version genuinely current on order_date, because the order predates the product's earliest known valid_from -- a documented data-generation gap (seeders/seed_postgres_oltp.py never constrained order_item product selection by the product's own creation date), not a pipeline defect. ~40% of rows. See docs/BUILD_LOG.md."
+
+  - name: fct_orders
+    description: "Order grain -- one row per order, pre-aggregated from fct_order_items and stg_payments for dashboards that don't need line-level detail."
+    columns:
+      - name: order_id
+        tests: [not_null, unique]
+
+  - name: fct_campaign_performance
+    description: "The one INCREMENTAL dbt model in this project (deliberately singular -- see this model's docstring for why). Daily ad-platform performance with derived CTR/CVR/cost-per-conversion."
+    columns:
+      - name: campaign_id
+        tests: [not_null]
+
+  - name: fct_clickstream_sessions
+    description: "Session-grain funnel rollup. order_id is a REAL join to fct_orders for converting sessions (seeders/seed_kafka_events.py built converting sessions FROM live orders), not a fabricated relationship."
+    columns:
+      - name: session_id
+        tests: [not_null, unique]
+      - name: order_id
+        description: "NULL for non-converting sessions."
+        tests:
+          - relationships:
+              to: ref('fct_orders')
+              field: order_id
+              config:
+                where: "order_id is not null"

@@ -1,0 +1,87 @@
+table DimProducts
+	description: "dbt: dim_products -- SCD Type 2 (see spark_jobs/bronze_to_silver/products_scd2.py for the Delta MERGE that builds this history). ProductKey (not ProductId) is the grain: a product has one row per price/cost/status version."
+
+	column ProductKey
+		dataType: string
+		sourceColumn: product_key
+		isKey
+		summarizeBy: none
+		description: "Surrogate key, one row per (ProductId, version). This is what FactOrderItems relates to -- NOT ProductId -- so a sale always resolves to the price/cost that was actually current on the sale date, not today's."
+
+	column ProductId
+		dataType: int64
+		sourceColumn: product_id
+		summarizeBy: none
+
+	column Sku
+		dataType: string
+		sourceColumn: sku
+		summarizeBy: none
+
+	column ProductName
+		dataType: string
+		sourceColumn: product_name
+		summarizeBy: none
+
+	column Category
+		dataType: string
+		sourceColumn: category
+		summarizeBy: none
+
+	column Subcategory
+		dataType: string
+		sourceColumn: subcategory
+		summarizeBy: none
+
+	column Brand
+		dataType: string
+		sourceColumn: brand
+		summarizeBy: none
+
+	column UnitCostEur
+		dataType: decimal
+		formatString: "€#,0.00"
+		sourceColumn: unit_cost_eur
+		summarizeBy: none
+
+	column UnitPriceEur
+		dataType: decimal
+		formatString: "€#,0.00"
+		sourceColumn: unit_price_eur
+		summarizeBy: none
+
+	column IsActive
+		dataType: boolean
+		sourceColumn: is_active
+		summarizeBy: none
+
+	column ValidFrom
+		dataType: dateTime
+		formatString: yyyy-mm-dd
+		sourceColumn: valid_from
+		summarizeBy: none
+
+	column ValidTo
+		dataType: dateTime
+		formatString: yyyy-mm-dd
+		sourceColumn: valid_to
+		summarizeBy: none
+
+	column IsCurrent
+		dataType: boolean
+		sourceColumn: is_current
+		summarizeBy: none
+		description: "Filter to true for a 'current catalog' view (e.g. a product list slicer) -- history rows stay in the table for fact-table point-in-time joins regardless."
+
+	hierarchy 'Category Hierarchy'
+		level Category
+		level Subcategory
+		level ProductName
+
+	partition DimProducts = m
+		mode: import
+		source =
+				let
+					Source = Parquet.Document(File.Contents(ParquetFolder & "dim_products.parquet"))
+				in
+					Source

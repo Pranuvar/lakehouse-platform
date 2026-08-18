@@ -1,0 +1,16 @@
+# Installed on top of apache/airflow:2.10.5-python3.11's own constraint set.
+pyspark==3.5.3
+delta-spark==3.2.1
+dbt-duckdb==1.9.1
+# delta-rs: a second, JVM-free way to write Delta tables, used by the
+# ingestion/ (ADF-pattern copy activity) layer -- deliberately NOT
+# PySpark, mirroring how ADF's own Copy Activity is a lightweight data
+# movement service, not a Spark job. Spark is reserved for the heavier
+# bronze->silver transform (spark_jobs/). See ingestion/delta_writer.py.
+deltalake==1.6.2
+boto3==1.35.36
+kafka-python-ng==2.2.3
+requests==2.32.3
+psycopg2-binary==2.9.9
+pandas==2.2.3
+pyarrow==17.0.0

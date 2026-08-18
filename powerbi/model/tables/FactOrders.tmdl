@@ -1,0 +1,80 @@
+table FactOrders
+	description: "dbt: fct_orders -- order grain (one row per order). Use FactOrderItems for line-level/product-level analysis; this table is for order-count and order-level KPIs."
+
+	column OrderId
+		dataType: int64
+		sourceColumn: order_id
+		isKey
+		summarizeBy: none
+
+	column CustomerId
+		dataType: int64
+		sourceColumn: customer_id
+		summarizeBy: none
+
+	column StoreId
+		dataType: int64
+		sourceColumn: store_id
+		summarizeBy: none
+
+	column Channel
+		dataType: string
+		sourceColumn: channel
+		summarizeBy: none
+
+	column OrderStatus
+		dataType: string
+		sourceColumn: order_status
+		summarizeBy: none
+
+	column Currency
+		dataType: string
+		sourceColumn: currency
+		summarizeBy: none
+
+	column OrderDate
+		dataType: dateTime
+		formatString: yyyy-mm-dd
+		sourceColumn: order_date
+		summarizeBy: none
+
+	column OrderMonth
+		dataType: string
+		sourceColumn: order_month
+		summarizeBy: none
+		isHidden
+
+	column ItemCount
+		dataType: int64
+		sourceColumn: item_count
+		summarizeBy: sum
+
+	column TotalQuantity
+		dataType: int64
+		sourceColumn: total_quantity
+		summarizeBy: sum
+
+	column GrossLineTotalEur
+		dataType: decimal
+		formatString: "€#,0.00"
+		sourceColumn: gross_line_total_eur
+		summarizeBy: sum
+
+	column TotalPaidEur
+		dataType: decimal
+		formatString: "€#,0.00"
+		sourceColumn: total_paid_eur
+		summarizeBy: sum
+
+	column PaymentCount
+		dataType: int64
+		sourceColumn: payment_count
+		summarizeBy: sum
+
+	partition FactOrders = m
+		mode: import
+		source =
+				let
+					Source = Parquet.Document(File.Contents(ParquetFolder & "fct_orders.parquet"))
+				in
+					Source

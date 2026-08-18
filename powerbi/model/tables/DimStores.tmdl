@@ -1,0 +1,50 @@
+table DimStores
+	description: "dbt: dim_stores -- 150 stores (1 online + 149 physical)."
+
+	column StoreId
+		dataType: int64
+		sourceColumn: store_id
+		isKey
+		summarizeBy: none
+
+	column StoreName
+		dataType: string
+		sourceColumn: store_name
+		summarizeBy: none
+
+	column Channel
+		dataType: string
+		sourceColumn: channel
+		summarizeBy: none
+
+	column Country
+		dataType: string
+		sourceColumn: country
+		summarizeBy: none
+
+	column City
+		dataType: string
+		sourceColumn: city
+		summarizeBy: none
+
+	column OpenedDate
+		dataType: dateTime
+		formatString: yyyy-mm-dd
+		sourceColumn: opened_date
+		summarizeBy: none
+
+	-- Country > City > Store -- this is the exact hierarchy the RLS role
+	-- filters on (see roles.tmdl), which is why it's a real hierarchy
+	-- here and not just three flat columns.
+	hierarchy 'Geography Hierarchy'
+		level Country
+		level City
+		level StoreName
+
+	partition DimStores = m
+		mode: import
+		source =
+				let
+					Source = Parquet.Document(File.Contents(ParquetFolder & "dim_stores.parquet"))
+				in
+					Source

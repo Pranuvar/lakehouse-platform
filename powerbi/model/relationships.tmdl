@@ -1,0 +1,59 @@
+/// Star schema relationships. All single-direction (filters flow from
+/// the "one" side dimension down to the "many" side fact, the standard
+/// and safest default) except where noted.
+///
+/// DimUserCountryAccess has NO relationship here on purpose -- it's
+/// RLS-only plumbing, read via LOOKUPVALUE() inside the role's DAX
+/// filter (see roles.tmdl), not a modelled dimension a user browses.
+///
+/// FactClickstreamSessions -> FactOrders is a genuine fact-to-fact
+/// relationship, which Power BI modelling guidance usually discourages
+/// in favour of relating through a shared dimension -- kept here anyway
+/// because it's a real, valuable, and otherwise-unmodellable
+/// relationship: FactOrders[OrderId] is unique (a valid "one" side), and
+/// this is the literal cross-source join this whole project was built
+/// to prove (seeders/seed_kafka_events.py's converting sessions are
+/// built FROM real orders) -- flowing it all the way to the BI layer is
+/// the point, not an oversight.
+
+relationship 8f1a1e10-0001-4000-8000-000000000001
+	fromColumn: FactOrders.CustomerId
+	toColumn: DimCustomers.CustomerId
+
+relationship 8f1a1e10-0001-4000-8000-000000000002
+	fromColumn: FactOrderItems.CustomerId
+	toColumn: DimCustomers.CustomerId
+
+relationship 8f1a1e10-0001-4000-8000-000000000003
+	fromColumn: FactOrders.StoreId
+	toColumn: DimStores.StoreId
+
+relationship 8f1a1e10-0001-4000-8000-000000000004
+	fromColumn: FactOrderItems.StoreId
+	toColumn: DimStores.StoreId
+
+relationship 8f1a1e10-0001-4000-8000-000000000005
+	fromColumn: FactOrderItems.ProductKey
+	toColumn: DimProducts.ProductKey
+
+relationship 8f1a1e10-0001-4000-8000-000000000006
+	fromColumn: FactOrders.OrderDate
+	toColumn: DimDate.DateDay
+
+relationship 8f1a1e10-0001-4000-8000-000000000007
+	fromColumn: FactOrderItems.OrderDate
+	toColumn: DimDate.DateDay
+
+relationship 8f1a1e10-0001-4000-8000-000000000008
+	fromColumn: FactCampaignPerformance.PerformanceDate
+	toColumn: DimDate.DateDay
+
+relationship 8f1a1e10-0001-4000-8000-000000000009
+	fromColumn: FactClickstreamSessions.CustomerId
+	toColumn: DimCustomers.CustomerId
+	isActive: false
+	description: "Inactive by default (a session can be anonymous -- CustomerId is nullable, see seeders/seed_kafka_events.py -- and activating this alongside the FactOrders relationship below would create ambiguity). Activate per-visual with USERELATIONSHIP() when needed."
+
+relationship 8f1a1e10-0001-4000-8000-00000000000a
+	fromColumn: FactClickstreamSessions.OrderId
+	toColumn: FactOrders.OrderId
