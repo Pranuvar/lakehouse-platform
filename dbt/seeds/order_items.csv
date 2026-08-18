@@ -1,0 +1,8 @@
+order_item_id,order_id,product_id,quantity,unit_price_eur,discount_pct
+1,1,1,2,4.00,0
+2,1,2,1,2.00,0
+3,2,3,1,6.00,0
+4,3,1,2,4.50,0
+5,4,4,1,9.00,0
+6,5,2,3,2.00,0
+7,6,3,1,6.00,0

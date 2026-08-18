@@ -1,0 +1,9 @@
+event_id,session_id,customer_id,event_type,event_ts,device_type,referrer,product_sku,order_id,event_date
+e1,s1,1,page_view,2024-03-15 09:55:00,mobile,direct,,,2024-03-15
+e2,s1,1,product_view,2024-03-15 09:57:00,mobile,direct,SKU-000001,,2024-03-15
+e3,s1,1,purchase,2024-03-15 10:00:00,mobile,direct,,1,2024-03-15
+e4,s2,2,page_view,2024-03-20 10:55:00,desktop,organic_search,,,2024-03-20
+e5,s2,2,purchase,2024-03-20 11:00:00,desktop,organic_search,,2,2024-03-20
+e6,s3,3,page_view,2024-07-10 08:50:00,mobile,email,,,2024-07-10
+e7,s3,3,add_to_cart,2024-07-10 08:58:00,mobile,email,SKU-000001,,2024-07-10
+e8,s4,,page_view,2024-08-01 08:00:00,tablet,social,,,2024-08-01

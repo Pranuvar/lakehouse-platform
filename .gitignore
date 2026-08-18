@@ -45,3 +45,6 @@ docker/minio/data/
 .idea/
 .vscode/
 *.swp
+
+# CI seed fixtures must be versioned -- they are the data source for the dbt build
+!dbt/seeds/*.csv

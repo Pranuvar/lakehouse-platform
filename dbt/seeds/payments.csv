@@ -1,0 +1,7 @@
+payment_id,order_id,payment_method,amount_eur,payment_status,paid_at
+1,1,card,10.00,captured,2024-03-15 10:05:00
+2,2,cash,6.00,captured,2024-03-20 11:05:00
+3,3,card,9.00,captured,2024-07-10 09:05:00
+4,4,paypal,9.00,captured,2024-07-15 14:05:00
+5,5,card,6.00,captured,2024-08-01 16:05:00
+6,6,card,6.00,refunded,2024-08-05 12:05:00

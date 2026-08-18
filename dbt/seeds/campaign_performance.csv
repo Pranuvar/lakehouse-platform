@@ -1,0 +1,4 @@
+campaign_id,campaign_name,ad_set_id,channel,date,impressions,clicks,conversions,spend_eur,updated_at
+1,campaign_0001,11,google_search,2024-03-01,1000,50,5,25.00,2024-03-02 00:00:00
+1,campaign_0001,11,google_search,2024-03-02,1100,55,6,27.00,2024-03-03 00:00:00
+2,campaign_0002,21,meta_feed,2024-03-01,2000,80,8,40.00,2024-03-02 00:00:00

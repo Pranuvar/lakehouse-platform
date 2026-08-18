@@ -1,0 +1,4 @@
+store_id,product_sku,snapshot_date,quantity_on_hand,unit_cost_eur,reorder_point,drop_year_month
+2,SKU-000001,2024-03-31,40,2.00,20,2024-03
+2,SKU-000002,2024-03-31,55,1.00,25,2024-03
+2,SKU-000003,2024-07-31,30,3.00,15,2024-07

@@ -1,0 +1,6 @@
+product_id,sku,product_name,category,subcategory,brand,unit_cost_eur,unit_price_eur,is_active,valid_from,valid_to,is_current,_silver_processed_at
+1,SKU-000001,TestBrand Bakery 250g,Grocery,Bakery,TestBrand,2.00,4.00,true,2024-01-01,2024-06-01,false,2024-06-01 00:00:00
+1,SKU-000001,TestBrand Bakery 250g,Grocery,Bakery,TestBrand,2.50,4.50,true,2024-06-01,,true,2024-06-01 00:00:01
+2,SKU-000002,TestBrand Dairy 500g,Grocery,Dairy & Eggs,TestBrand,1.00,2.00,true,2024-01-01,,true,2024-01-01 00:00:00
+3,SKU-000003,TestBrand Pantry 1kg,Grocery,Pantry Staples,TestBrand,3.00,6.00,true,2024-01-01,,true,2024-01-01 00:00:00
+4,SKU-000004,TestBrand Kitchenware single,Home & Garden,Kitchenware,TestBrand,5.00,9.00,true,2024-01-01,,true,2024-01-01 00:00:00
